@@ -1255,35 +1255,39 @@ MSG
     end
   end
 
-  def test_call
-    # basic positional argument call
+  def test_call_with_positional_arguments
     assert_equal evaluate("lighten(blue, 5%)"), evaluate("call(lighten, blue, 5%)")
-    # keyword arguments call
-    assert_equal evaluate("lighten($color: blue, $amount: 5%)"), evaluate("call(lighten, $color: blue, $amount: 5%)")
-    # name is performed so that it can be an expression
-    assert_equal evaluate("lighten($color: blue, $amount: 5%)"), evaluate("call($fn, $color: blue, $amount: 5%)", env("fn" => Sass::Script::String.new("lighten")))
-    # unknown functions are passed through to CSS
+  end
+
+  def test_call_with_keyword_arguments
+    assert_equal(
+      evaluate("lighten($color: blue, $amount: 5%)"),
+      evaluate("call(lighten, $color: blue, $amount: 5%)"))
+  end
+
+  def test_call_with_keyword_and_positional_arguments
+    assert_equal(
+      evaluate("lighten(blue, $amount: 5%)"),
+      evaluate("call(lighten, blue, $amount: 5%)"))
+  end
+
+  def test_call_with_dynamic_name
+    assert_equal(
+      evaluate("lighten($color: blue, $amount: 5%)"),
+      evaluate("call($fn, $color: blue, $amount: 5%)",
+        env("fn" => Sass::Script::String.new("lighten"))))
+  end
+
+  def test_call_unknown_function
     assert_equal evaluate("unknown(red, blue)"), evaluate("call(unknown, red, blue)")
-    begin
-      # errors for the call function itself are reported correctly
-      # An argument is required
-      evaluate("call()")
-    rescue Sass::SyntaxError => e
-      assert_equal "A function name must be provided for `call'", e.message
-    end
-    begin
-      # errors for the call function itself are reported correctly
-      # A string is required
-      evaluate("call(3px)")
-    rescue Sass::SyntaxError => e
-      assert_equal "3px is not a string for `call'", e.message
-    end
-    begin
-      # errors for the called function are reported correctly
-      evaluate("call(lighten, 3px, 5%)")
-    rescue Sass::SyntaxError => e
-      assert_equal "3px is not a color for `lighten'", e.message
-    end
+  end
+
+  def test_call_with_non_string_argument
+    assert_error_message "$name: 3px is not a string for `call'", "call(3px)"
+  end
+
+  def test_errors_in_called_function
+    assert_error_message "3px is not a color for `lighten'", "call(lighten, 3px, 5%)"
   end
 
   ## Regression Tests

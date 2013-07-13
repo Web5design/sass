@@ -191,6 +191,9 @@ module Sass::Script
   # \{#comparable comparable($number-1, $number-2)}
   # : Returns whether two numbers can be added or compared.
   #
+  # \{#call call($name, $args...)}
+  # : Dynamically calls a Sass function.
+  #
   # ## Miscellaneous Functions
   #
   # \{#if if($condition, $if-true, $if-false)}
@@ -337,8 +340,29 @@ module Sass::Script
       @signatures[method_name].first
     end
 
-    # Useful methods for making assertions about Sass values.
-    module Assertions
+    # The context in which methods in {Script::Functions} are evaluated.
+    # That means that all instance methods of {EvaluationContext}
+    # are available to use in functions.
+    class EvaluationContext
+      include Functions
+
+
+      # The environment of the {Sass::Engine}
+      #
+      # @return [Environment]
+      attr_reader :environment
+
+      # The options hash for the {Sass::Engine} that is processing the function call
+      #
+      # @return [{Symbol => Object}]
+      attr_reader :options
+
+      # @param environment [Environment] See \{#environment}
+      def initialize(environment)
+        @environment = environment
+        @options = environment.options
+      end
+
       # Asserts that the type of a given SassScript value
       # is the expected type (designated by a symbol).
       #
@@ -398,30 +422,6 @@ module Sass::Script
         else
           raise ArgumentError.new("Expected #{number} to be an integer")
         end
-      end
-    end
-
-    # The context in which methods in {Script::Functions} are evaluated.
-    # That means that all instance methods of {EvaluationContext}
-    # are available to use in functions.
-    class EvaluationContext
-      include Functions
-      include Assertions
-
-      # The environment of the {Sass::Engine}
-      #
-      # @return [Environment]
-      attr_reader :environment
-
-      # The options hash for the {Sass::Engine} that is processing the function call
-      #
-      # @return [{Symbol => Object}]
-      attr_reader :options
-
-      # @param environment [Environment] See \{#environment}
-      def initialize(environment)
-        @environment = environment
-        @options = environment.options
       end
     end
 
@@ -1689,6 +1689,33 @@ module Sass::Script
       Sass::Script::String.new("u" + value.to_s(36).rjust(8, '0'))
     end
     declare :unique_id, []
+
+    # Dynamically calls a function. This can call user-defined
+    # functions, built-in functions, or plain CSS functions. It will
+    # pass along all arguments, including keyword arguments, to the
+    # called function.
+    #
+    # @example
+    #   call(rgb, 10, 100, 255) => #0a64ff
+    #   call(scale-color, #0a64ff, $lightness: -10%) => #0058ef
+    #
+    #   $fn: nth;
+    #   call($fn, 2, (a b c)) => b
+    #
+    # @overload call($name, $args...)
+    # @param $name [String] The name of the function to call.
+    def call(name, *args)
+      assert_type name, :String, :name
+      kwargs = args.last.is_a?(Hash) ? args.pop : {}
+      funcall = Sass::Script::Tree::Funcall.new(
+        name.value,
+        args.map {|a| Sass::Script::Tree::Literal.new(a)},
+        Sass::Util.map_vals(kwargs) {|v| Sass::Script::Tree::Literal.new(v)},
+        nil)
+      funcall.options = options
+      funcall.perform(environment)
+    end
+    declare :call, [:name], :var_args => true, :var_kwargs => true
 
     # This function only exists as a workaround for IE7's [`content:counter`
     # bug][bug]. It works identically to any other plain-CSS function, except it
